@@ -508,15 +508,15 @@ public:
     return expenseShares;
   }
 
-  vector<Expense> getUserExpenses(int userId) {
-    set<Expense> userExpenses;
+  vector<int> getUserExpenseIds(int userId) {
+    set<int> userExpenseIds;
     for (const auto &[shareId, share] : shares) {
       if (share.getUserId() == userId) {
-        userExpenses.insert(expenses[share.getExpenseId()]);
+        userExpenseIds.insert(share.getExpenseId());
       }
     }
 
-    vector<Expense> userExpensesList(userExpenses.begin(), userExpenses.end());
+    vector<int> userExpensesList(userExpenseIds.begin(), userExpenseIds.end());
     return userExpensesList;
   }
 

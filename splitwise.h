@@ -343,9 +343,9 @@ private:
       }
       if (!isUpdate) {
         if (friendShip.getFromUserId() == fromUserId && friendShip.getToUserId() == toUserId)
-          addFriendShipBalance(FriendShipBalance(amount, friendShipId));
+          addFriendShipBalance(FriendShipBalance(friendShipId, amount));
         else
-          addFriendShipBalance(FriendShipBalance(amount, friendShipId));
+          addFriendShipBalance(FriendShipBalance(friendShipId, -amount));
       }
     }
   }
@@ -424,10 +424,35 @@ private:
 
     // update balances
     updateGroupMemberBalances(expense);
+
+    // update friendShipBalance
+    updateFriendShipBalances(expense);
   }
 
   void _handleAddFriendExpense(const Expense &expense) {
     updateFriendShipBalances(expense);
+  }
+
+  vector<Repayment> getRepaymentsBetweenFriends(int fromUserId, int toUserId) {
+    vector<Repayment> repayments;
+    int friendShipId = getFriendShipId(fromUserId, toUserId);
+    if (friendShipId == -1)
+      return repayments;
+
+    FriendShip friendShip = friendShips[friendShipId];
+
+    for (const auto &[id, friendShipBalance] : friendShipBalances) {
+      if (friendShipBalance.getFriendShipId() == friendShipId) {
+        if (friendShipBalance.getAmount() > 0) {
+          repayments.emplace_back(friendShip.getFromUserId(), friendShip.getToUserId(), friendShipBalance.getAmount());
+        } else if (friendShipBalance.getAmount() < 0) {
+          repayments.emplace_back(friendShip.getToUserId(), friendShip.getFromUserId(), -friendShipBalance.getAmount());
+        }
+        break;
+      }
+    }
+
+    return repayments;
   }
 
 public:
@@ -464,7 +489,7 @@ public:
     return friendShipBalance.getId();
   }
 
-  int getIsFriend(int userId1, int userId2) {
+  int getFriendShipId(int userId1, int userId2) {
     for (const auto &[id, friendShip] : friendShips) {
       if ((friendShip.getFromUserId() == userId1 && friendShip.getToUserId() == userId2) || (friendShip.getFromUserId() == userId2 && friendShip.getToUserId() == userId1))
         return friendShip.getId();
@@ -473,7 +498,7 @@ public:
   }
 
   int addFriendIfNotAlready(int userId1, int userId2) {
-    int friendShipId = getIsFriend(userId1, userId2);
+    int friendShipId = getFriendShipId(userId1, userId2);
     if (friendShipId == -1) {
       friendShipId = addFriendShip(FriendShip(userId1, userId2));
     }
@@ -546,6 +571,12 @@ public:
   void printUsers() {
     for (auto &[id, user] : users) {
       cout << "User ID: " << user.getId() << ", Name: " << user.getName() << endl;
+    }
+  }
+
+  void printAllFriendShips() {
+    for (auto &[id, friendShip] : friendShips) {
+      cout << "FriendShip ID: " << friendShip.getId() << ", From User ID: " << friendShip.getFromUserId() << ", To User ID: " << friendShip.getToUserId() << endl;
     }
   }
 
@@ -632,6 +663,28 @@ public:
       cout << "Group Name: " << group.getName() << endl;
       printRepayments(repayments);
     }
+  }
+
+  void printAllFriendShipsRepayments() {
+    vector<Repayment> repayments;
+    for (const auto &[balanceId, balance] : friendShipBalances) {
+      FriendShip friendShip = friendShips[balance.getFriendShipId()];
+      if (balance.getAmount() > 0) {
+        repayments.push_back({friendShip.getFromUserId(), friendShip.getToUserId(), balance.getAmount()});
+      } else if (balance.getAmount() < 0) {
+        repayments.push_back({friendShip.getToUserId(), friendShip.getFromUserId(), -balance.getAmount()});
+      }
+    }
+    printRepayments(repayments);
+  }
+
+  void printRepaymentsBetweenFriends(int fromUserId, int toUserId) {
+    vector<Repayment> repayments = getRepaymentsBetweenFriends(fromUserId, toUserId);
+    if (repayments.empty()) {
+      cout << "No repayments between " << users[fromUserId].getName() << " and " << users[toUserId].getName() << endl;
+      return;
+    }
+    printRepayments(repayments);
   }
 
   // Similarly, you can add print methods for other entities if needed.

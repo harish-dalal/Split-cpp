@@ -39,6 +39,10 @@ int main() {
     cout << "11. View Group Repayments\n";
     cout << "12. View Group Member Balances\n";
     cout << "13. View all shares\n";
+    cout << "14. Add Friends Expense\n";
+    cout << "15. Print 2 Friend's Repayment\n";
+    cout << "16. Print all FriendShips\n";
+    cout << "17. Print all friendShip repayments\n";
     cout << "0. Exit\n";
     cout << "Enter your choice: ";
     cin >> choice;
@@ -59,7 +63,7 @@ int main() {
       // Display all group
       splitwise.printGroups();
       cout << "Enter group ID: ";
-      double groupId;
+      int groupId;
       cin >> groupId;
       string name;
       double amount;
@@ -170,6 +174,59 @@ int main() {
     // view all shares
     case 13: {
       splitwise.printShares();
+      break;
+    }
+    // Add Friends Expense
+    case 14: {
+      string name;
+      double amount;
+      cout << "Enter expense name: ";
+      cin.ignore();
+      getline(cin, name);
+      cout << "Enter amount: ";
+      cin >> amount;
+      // display users for group
+      splitwise.printUsers();
+
+      cout << "Enter number of users: ";
+      int numUsers;
+      cin >> numUsers;
+      cout << "Enter user IDs: ";
+      vector<int> userIds;
+      int userId;
+      while (numUsers--) {
+        cin >> userId;
+        userIds.push_back(userId);
+      }
+
+      cout << "Paid By user ID: ";
+      int paidByUserId;
+      cin >> paidByUserId;
+
+      Expense expense(name, amount);
+      splitwise.addExpense(expense, userIds, paidByUserId);
+      break;
+    }
+    // Get Friends Repayment
+    case 15: {
+      splitwise.printUsers();
+      cout << "Enter user1 id: ";
+      int user1Id;
+      cin >> user1Id;
+      cout << "Enter user2 id: ";
+      int user2Id;
+      cin >> user2Id;
+      splitwise.printRepaymentsBetweenFriends(user1Id, user2Id);
+      break;
+    }
+    // Print all friendShips
+    case 16: {
+      splitwise.printAllFriendShips();
+      break;
+    }
+    // Print all friendShips repayments
+    case 17: {
+      splitwise.printAllFriendShipsRepayments();
       break;
     }
     case 0:

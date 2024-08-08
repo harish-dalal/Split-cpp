@@ -30,6 +30,15 @@ class Expense {
 public:
   static int idIncrementer;
 
+  struct Args {
+    string name;
+    double amount;
+    int groupId = -1;
+    vector<int> groupUserIds;
+    vector<int> friendUserIds;
+    int paidByUserId;
+  };
+
   Expense() : id(-1) {}
 
   Expense(string name, double amount, int groupId = -1)
@@ -424,12 +433,10 @@ private:
 
     // update balances
     updateGroupMemberBalances(expense);
-
-    // update friendShipBalance
-    updateFriendShipBalances(expense);
   }
 
   void _handleAddFriendExpense(const Expense &expense) {
+    // update non group expense balances (friends balance)
     updateFriendShipBalances(expense);
   }
 
@@ -505,22 +512,34 @@ public:
     return friendShipId;
   }
 
+  bool updateGroupIsSimpfliedDebt(int id) {
+    groups[id].setIsDebtSimplified(!groups[id].getIsDebtSimplified());
+    return groups[id].getIsDebtSimplified();
+  }
   void updateGroupRepaymentBalance(int id, double amount) { groupRepaymentBalances[id].setAmount(amount); }
   void updateGroupMemberBalance(int id, double amount) { groupMemberBalances[id].setAmount(amount); }
   void updateFriendShipBalance(int id, double amount) { friendShipBalances[id].setAmount(amount); }
 
-  void addExpense(const Expense &expense, vector<int> userIds, int paidByUserId) {
+  void addExpense(const Expense::Args args) {
+    string expenseName = args.name;
+    double expenseAmount = args.amount;
+    int expenseGroupId = args.groupId;
+    vector<int> groupUserIds = args.groupUserIds;
+    vector<int> friendUserIds = args.friendUserIds;
+    int paidByUserId = args.paidByUserId;
+
+    Expense expense(expenseName, expenseAmount, expenseGroupId);
     expenses[expense.getId()] = expense;
 
-    // make each other friends
-    makeEachOtherFriends(userIds);
-
-    // create shares entity for this expense
-    updateShares(expense, paidByUserId, userIds);
-
     if (expense.getGroupId() != -1) {
+      // create shares entity for this expense
+      makeEachOtherFriends(groupUserIds);
+      updateShares(expense, paidByUserId, groupUserIds);
       _handleAddGroupExpense(expense);
     } else {
+      // create shares entity for this expense
+      makeEachOtherFriends(friendUserIds);
+      updateShares(expense, paidByUserId, friendUserIds);
       _handleAddFriendExpense(expense);
     }
   }
@@ -568,15 +587,33 @@ public:
     return -1;
   }
 
-  void printUsers() {
+  vector<int> getUserGroupIds(int userId) {
+    vector<int> userGroupIds;
+    for (const auto &[id, groupMember] : groupMembers) {
+      if (groupMember.getUserId() == userId) {
+        userGroupIds.push_back(groupMember.getGroupId());
+      }
+    }
+    return userGroupIds;
+  }
+
+  void printAllUsers() {
     for (auto &[id, user] : users) {
       cout << "User ID: " << user.getId() << ", Name: " << user.getName() << endl;
     }
   }
 
+  void printGroupUsers(int groupId) {
+    for (const auto &[id, groupMember] : groupMembers) {
+      if (groupMember.getGroupId() == groupId) {
+        cout << "User ID: " << groupMember.getUserId() << ", Name: " << users[groupMember.getUserId()].getName() << endl;
+      }
+    }
+  }
+
   void printAllFriendShips() {
     for (auto &[id, friendShip] : friendShips) {
-      cout << "FriendShip ID: " << friendShip.getId() << ", From User ID: " << friendShip.getFromUserId() << ", To User ID: " << friendShip.getToUserId() << endl;
+      cout << ", From User ID: " << users[friendShip.getFromUserId()].getName() << ", To User ID: " << users[friendShip.getToUserId()].getName() << endl;
     }
   }
 
@@ -593,6 +630,24 @@ public:
       vector<Repayment> repayments = getGroupRepaymentBalances(groupId);
       printRepayments(repayments);
     }
+  }
+
+  void printGroupRepaymentBalances(int groupId) {
+    vector<Repayment> groupRepayments;
+    if (groups[groupId].getIsDebtSimplified()) {
+      vector<pair<int, double>> creditors = getCreditorsFromGroupMemberBalance(groupId);
+      vector<pair<int, double>> debtors = getDebtorsFromGroupMemberBalance(groupId);
+
+      groupRepayments = generateSimplifiedDebts(creditors, debtors);
+
+    } else {
+      groupRepayments = getGroupRepaymentBalances(groupId);
+    }
+    cout << "Group Name: " << groups[groupId].getName() << endl;
+    if (groupRepayments.empty()) {
+      cout << "No repayments" << endl;
+    } else
+      printRepayments(groupRepayments);
   }
 
   void printGroups() {
@@ -643,20 +698,34 @@ public:
     printRepayments(userFilteredRepayments);
   }
 
-  void printAllSimplifiedGroupRepaymentBalances() {
-    for (const auto &[groupId, group] : groups) {
-      vector<pair<int, double>> creditors;
-      vector<pair<int, double>> debtors;
-
-      for (const auto &[id, groupMemberBalance] : groupMemberBalances) {
-        if (groupMembers[groupMemberBalance.getGroupMemberId()].getGroupId() == groupId) {
-          if (groupMemberBalance.getAmount() > 0) {
-            creditors.push_back({groupMembers[groupMemberBalance.getGroupMemberId()].getUserId(), groupMemberBalance.getAmount()});
-          } else {
-            debtors.push_back({groupMembers[groupMemberBalance.getGroupMemberId()].getUserId(), groupMemberBalance.getAmount()});
-          }
+  vector<pair<int, double>> getCreditorsFromGroupMemberBalance(int groupId) {
+    vector<pair<int, double>> creditors;
+    for (const auto &[id, groupMemberBalance] : groupMemberBalances) {
+      if (groupMembers[groupMemberBalance.getGroupMemberId()].getGroupId() == groupId) {
+        if (groupMemberBalance.getAmount() > 0) {
+          creditors.push_back({groupMembers[groupMemberBalance.getGroupMemberId()].getUserId(), groupMemberBalance.getAmount()});
         }
       }
+    }
+    return creditors;
+  }
+
+  vector<pair<int, double>> getDebtorsFromGroupMemberBalance(int groupId) {
+    vector<pair<int, double>> debtors;
+    for (const auto &[id, groupMemberBalance] : groupMemberBalances) {
+      if (groupMembers[groupMemberBalance.getGroupMemberId()].getGroupId() == groupId) {
+        if (groupMemberBalance.getAmount() < 0) {
+          debtors.push_back({groupMembers[groupMemberBalance.getGroupMemberId()].getUserId(), groupMemberBalance.getAmount()});
+        }
+      }
+    }
+    return debtors;
+  }
+
+  void printAllSimplifiedGroupRepaymentBalances() {
+    for (const auto &[groupId, group] : groups) {
+      vector<pair<int, double>> creditors = getCreditorsFromGroupMemberBalance(groupId);
+      vector<pair<int, double>> debtors = getDebtorsFromGroupMemberBalance(groupId);
 
       vector<Repayment> repayments = generateSimplifiedDebts(creditors, debtors);
 
@@ -678,13 +747,65 @@ public:
     printRepayments(repayments);
   }
 
-  void printRepaymentsBetweenFriends(int fromUserId, int toUserId) {
+  void printRepaymentsBetweenFriends(int fromUserId, int toUserId, bool includeGroups = false) {
     vector<Repayment> repayments = getRepaymentsBetweenFriends(fromUserId, toUserId);
     if (repayments.empty()) {
-      cout << "No repayments between " << users[fromUserId].getName() << " and " << users[toUserId].getName() << endl;
-      return;
+      cout << "No direct repayments between " << users[fromUserId].getName() << " and " << users[toUserId].getName() << endl;
+    } else {
+      cout << "Non Group repayments" << endl;
+      // non - group
+      printRepayments(repayments);
     }
-    printRepayments(repayments);
+
+    if (includeGroups) {
+      // fetch common groups
+      vector<int> fromUserGroups = getUserGroupIds(fromUserId);
+      vector<int> toUserGroups = getUserGroupIds(toUserId);
+
+      map<int, int> commonGroups;
+
+      for (const auto groupId : fromUserGroups) {
+        commonGroups[groupId]++;
+      }
+
+      for (const auto groupId : toUserGroups) {
+        commonGroups[groupId]++;
+      }
+
+      const auto filter = [&](vector<Repayment> &reps) {
+        vector<Repayment> filteredRepayments;
+        for (const auto &repayment : reps) {
+          if ((repayment.from_userId == fromUserId && repayment.to_userId == toUserId) || (repayment.from_userId == toUserId && repayment.to_userId == fromUserId)) {
+            filteredRepayments.push_back(repayment);
+          }
+        }
+        return filteredRepayments;
+      };
+
+      for (const auto &[groupId, count] : commonGroups) {
+        if (count == 2) {
+          cout << "Group Name: " << groups[groupId].getName() << endl;
+          if (groups[groupId].getIsDebtSimplified()) {
+            vector<pair<int, double>> creditors = getCreditorsFromGroupMemberBalance(groupId);
+            vector<pair<int, double>> debtors = getDebtorsFromGroupMemberBalance(groupId);
+
+            vector<Repayment> groupRepayments = generateSimplifiedDebts(creditors, debtors);
+            vector<Repayment> filteredRepayments = filter(groupRepayments);
+            if (filteredRepayments.empty()) {
+              cout << "No repayments in the group" << endl;
+            } else
+              printRepayments(filter(groupRepayments));
+          } else {
+            vector<Repayment> groupRepayments = getGroupRepaymentBalances(groupId);
+            vector<Repayment> filteredRepayments = filter(groupRepayments);
+            if (filteredRepayments.empty()) {
+              cout << "No repayments in the group" << endl;
+            } else
+              printRepayments(filter(groupRepayments));
+          }
+        }
+      }
+    }
   }
 
   // Similarly, you can add print methods for other entities if needed.

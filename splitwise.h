@@ -532,12 +532,10 @@ public:
     expenses[expense.getId()] = expense;
 
     if (expense.getGroupId() != -1) {
-      // create shares entity for this expense
       makeEachOtherFriends(groupUserIds);
       updateShares(expense, paidByUserId, groupUserIds);
       _handleAddGroupExpense(expense);
     } else {
-      // create shares entity for this expense
       makeEachOtherFriends(friendUserIds);
       updateShares(expense, paidByUserId, friendUserIds);
       _handleAddFriendExpense(expense);
